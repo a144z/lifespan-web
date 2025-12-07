@@ -90,57 +90,19 @@ export class LifespanPredictor {
       // Initialize WASM backend first
       await initializeWasm();
 
-      // Ensure we use an absolute URL for the model path
-      let modelUrl = this.modelPath;
-      if (typeof window !== 'undefined' && window.location) {
-        // If path is relative, make it absolute
-        if (modelUrl.startsWith('/')) {
-          modelUrl = `${window.location.origin}${modelUrl}`;
-        } else if (!modelUrl.startsWith('http')) {
-          modelUrl = `${window.location.origin}/${modelUrl}`;
-        }
-      }
-
-      console.log('Loading ONNX model from:', modelUrl);
-      
-      // Verify the file exists by trying to fetch it first (for better error messages)
-      if (typeof window !== 'undefined') {
-        try {
-          const response = await fetch(modelUrl, { method: 'HEAD' });
-          if (!response.ok) {
-            throw new Error(`Model file not found (HTTP ${response.status}): ${modelUrl}`);
-          }
-          console.log('✓ Model file found, size:', response.headers.get('content-length') || 'unknown');
-        } catch (fetchError: any) {
-          // If HEAD fails, try GET to see if it's a CORS issue
-          if (fetchError.message && !fetchError.message.includes('HTTP')) {
-            console.warn('HEAD request failed, model might still be accessible:', fetchError.message);
-          } else {
-            throw fetchError;
-          }
-        }
-      }
+      console.log('Loading ONNX model from:', this.modelPath);
       
       // Create session - WASM should now be initialized
-      this.session = await ort.InferenceSession.create(modelUrl, {
+      this.session = await ort.InferenceSession.create(this.modelPath, {
         executionProviders: ['wasm'], // Use WebAssembly backend
         graphOptimizationLevel: 'all', // Enable all optimizations
       });
 
       this.isLoaded = true;
       console.log('✓ Model loaded successfully');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error loading model:', error);
-      const errorMessage = error?.message || String(error);
-      
-      // Provide more helpful error messages
-      if (errorMessage.includes('404') || errorMessage.includes('Failed to fetch')) {
-        throw new Error(`Model file not found at ${this.modelPath}. Please ensure the model file exists in public/models/`);
-      } else if (errorMessage.includes('protobuf') || errorMessage.includes('parsing')) {
-        throw new Error(`Model file is corrupted or invalid. Please check the ONNX model file.`);
-      } else {
-        throw new Error(`Failed to load model: ${errorMessage}`);
-      }
+      throw new Error(`Failed to load model: ${error}`);
     }
   }
 

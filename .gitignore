@@ -46,7 +46,7 @@ dist/
 build/
 *.whl
 
-# ONNX model files (should be added manually, not committed)
+# Model files (keep .onnx for web deployment, but ignore training files)
 *.pth
 *.pt
 *.pkl
