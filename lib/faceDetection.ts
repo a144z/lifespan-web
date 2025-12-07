@@ -130,9 +130,8 @@ export function drawFaceBox(
       ctx.restore();
     } else {
       // For back camera (not mirrored), draw directly without any transformations
-      // Ensure no transformations are applied by saving and resetting context
+      // Ensure transformation matrix is reset (identity matrix)
       ctx.save();
-      // Reset any transformations that might be inherited
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       
       // Text position: top right corner of the bounding box
@@ -148,7 +147,7 @@ export function drawFaceBox(
         textHeight + padding
       );
       
-      // Draw text directly without any mirroring
+      // Draw text directly (no mirroring)
       ctx.fillStyle = '#00ff00';
       ctx.fillText(text, actualTextX, actualTextY);
       
@@ -168,12 +167,14 @@ export function drawFaceBox(
       ctx.restore();
     } else {
       // For back camera (not mirrored), draw text directly
-      // Ensure no transformations are applied
+      // Ensure transformation matrix is reset (identity matrix)
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
+      
       ctx.fillStyle = '#00ff00';
       ctx.font = '14px sans-serif';
       ctx.fillText('Face Detected', box.x, box.y - 10);
+      
       ctx.restore();
     }
   }

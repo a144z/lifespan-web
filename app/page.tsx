@@ -121,6 +121,8 @@ export default function Home() {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
+          // Reset transformation matrix to ensure clean state
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
           // Draw all faces with their predictions
           for (const faceBox of currentFacesRef.current) {
             const faceKey = getFaceKey(faceBox);
@@ -163,6 +165,8 @@ export default function Home() {
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Reset transformation matrix to ensure clean state (especially important for back camera)
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
             
             // Update current faces
             currentFacesRef.current = faceBoxes;
@@ -194,6 +198,8 @@ export default function Home() {
                     // Redraw with new prediction
                     if (ctx && canvas) {
                       ctx.clearRect(0, 0, canvas.width, canvas.height);
+                      // Reset transformation matrix to ensure clean state
+                      ctx.setTransform(1, 0, 0, 1, 0, 0);
                       for (const f of currentFacesRef.current) {
                         const fKey = getFaceKey(f);
                         const fPred = facePredictionsRef.current.get(fKey);
@@ -253,12 +259,6 @@ export default function Home() {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
           }
-          
-          // Ensure canvas transform is correct for current camera
-          const expectedTransform = facingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
-          if (canvas.style.transform !== expectedTransform) {
-            canvas.style.transform = expectedTransform;
-          }
         }
       };
 
@@ -284,6 +284,8 @@ export default function Home() {
             const ctx = canvas.getContext('2d');
             if (ctx) {
               ctx.clearRect(0, 0, canvas.width, canvas.height);
+              // Reset transformation matrix to ensure clean state
+              ctx.setTransform(1, 0, 0, 1, 0, 0);
               for (const faceBox of currentFacesRef.current) {
                 const faceKey = getFaceKey(faceBox);
                 const prediction = facePredictionsRef.current.get(faceKey);
@@ -305,6 +307,8 @@ export default function Home() {
             const ctx = canvas.getContext('2d');
             if (ctx) {
               ctx.clearRect(0, 0, canvas.width, canvas.height);
+              // Reset transformation matrix to ensure clean state
+              ctx.setTransform(1, 0, 0, 1, 0, 0);
               for (const faceBox of currentFacesRef.current) {
                 const faceKey = getFaceKey(faceBox);
                 const prediction = facePredictionsRef.current.get(faceKey);
@@ -363,11 +367,6 @@ export default function Home() {
         // Clear previous predictions when switching cameras
         facePredictionsRef.current.clear();
         currentFacesRef.current = [];
-        
-        // Ensure canvas transform is correct for the current camera
-        if (canvasRef.current) {
-          canvasRef.current.style.transform = facing === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
-        }
         
         // Wait for video to be ready, then start processing
         videoRef.current.onloadedmetadata = async () => {
@@ -553,9 +552,9 @@ export default function Home() {
                     ref={canvasRef}
                     className="absolute top-0 left-0 w-full h-full pointer-events-none"
                     style={{ 
-                      transform: facingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)',
+                      transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
                       objectFit: 'cover' // Ensure canvas scales properly
-                    }} // Mirror only for front camera, explicit scaleX(1) for back camera
+                    }} // Mirror to match video (only for front camera)
                   />
                   {!cameraActive && (
                     <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-75">
