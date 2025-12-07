@@ -295,65 +295,65 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
+    <main className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-4 sm:py-8 md:py-12 px-3 sm:px-4 md:px-6">
       <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          <h1 className="text-4xl font-bold text-center text-gray-800 mb-2">
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-4 sm:p-6 md:p-8">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-center text-gray-800 mb-2">
             Remaining Lifespan Prediction
           </h1>
-          <p className="text-center text-gray-600 mb-8">
+          <p className="text-center text-gray-600 text-sm sm:text-base mb-4 sm:mb-6 md:mb-8 px-2">
             Upload a face image or use your camera for real-time prediction
           </p>
 
           {/* Mode Toggle */}
-          <div className="flex justify-center mb-6">
-            <div className="inline-flex rounded-lg border border-gray-300 p-1 bg-gray-100">
+          <div className="flex justify-center mb-4 sm:mb-6">
+            <div className="inline-flex rounded-lg border border-gray-300 p-1 bg-gray-100 w-full sm:w-auto">
               <button
                 onClick={() => handleModeChange('upload')}
-                className={`px-6 py-2 rounded-md font-medium transition-colors ${
+                className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 text-sm sm:text-base rounded-md font-medium transition-colors ${
                   mode === 'upload'
                     ? 'bg-white text-indigo-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-800'
                 }`}
               >
-                📷 Upload Photo
+                <span className="hidden sm:inline">📷 </span>Upload Photo
               </button>
               <button
                 onClick={() => handleModeChange('camera')}
-                className={`px-6 py-2 rounded-md font-medium transition-colors ${
+                className={`flex-1 sm:flex-none px-3 sm:px-6 py-2 text-sm sm:text-base rounded-md font-medium transition-colors ${
                   mode === 'camera'
                     ? 'bg-white text-indigo-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-800'
                 }`}
               >
-                🎥 Live Camera
+                <span className="hidden sm:inline">🎥 </span>Live Camera
               </button>
             </div>
           </div>
 
           {!modelLoaded && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-              <p className="text-yellow-800">Loading AI model...</p>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
+              <p className="text-yellow-800 text-sm sm:text-base">Loading AI model...</p>
             </div>
           )}
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-              <p className="text-red-800">{error}</p>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
+              <p className="text-red-800 text-sm sm:text-base break-words">{error}</p>
             </div>
           )}
 
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* Camera Mode */}
             {mode === 'camera' && (
-              <div className="space-y-4">
-                <div className="relative bg-black rounded-lg overflow-hidden">
+              <div className="space-y-3 sm:space-y-4">
+                <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
                   <video
                     ref={videoRef}
                     autoPlay
                     playsInline
                     muted
-                    className="w-full max-w-2xl mx-auto"
+                    className="w-full h-full object-cover"
                     style={{ transform: 'scaleX(-1)' }} // Mirror effect
                   />
                   <canvas
@@ -366,31 +366,31 @@ export default function Home() {
                       <button
                         onClick={startCamera}
                         disabled={!modelLoaded}
-                        className="px-8 py-4 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="px-4 sm:px-8 py-3 sm:py-4 bg-indigo-600 text-white rounded-lg text-sm sm:text-base font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         {modelLoaded ? '🎥 Start Camera' : 'Loading Model...'}
                       </button>
                     </div>
                   )}
                   {cameraActive && (
-                    <div className="absolute top-4 right-4">
+                    <div className="absolute top-2 sm:top-4 right-2 sm:right-4">
                       <button
                         onClick={stopCamera}
-                        className="px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors"
+                        className="px-3 sm:px-4 py-1.5 sm:py-2 bg-red-600 text-white rounded-lg text-xs sm:text-sm font-semibold hover:bg-red-700 transition-colors"
                       >
-                        Stop Camera
+                        Stop
                       </button>
                     </div>
                   )}
                   {fps > 0 && (
-                    <div className="absolute top-4 left-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded">
+                    <div className="absolute top-2 sm:top-4 left-2 sm:left-4 bg-black bg-opacity-50 text-white px-2 sm:px-3 py-1 rounded text-xs sm:text-sm">
                       {fps} FPS
                     </div>
                   )}
                 </div>
                 
                 {cameraActive && (
-                  <div className="text-center text-sm text-gray-600">
+                  <div className="text-center text-xs sm:text-sm text-gray-600 px-2">
                     <p>Face detection active - green box shows detected face</p>
                     <p className="text-xs mt-1">Predictions update in real-time when face is detected</p>
                   </div>
@@ -400,7 +400,7 @@ export default function Home() {
 
             {/* Upload Mode */}
             {mode === 'upload' && (
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-indigo-400 transition-colors">
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 sm:p-6 md:p-8 text-center hover:border-indigo-400 transition-colors">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -417,7 +417,7 @@ export default function Home() {
                   }`}
                 >
                   <svg
-                    className="mx-auto h-12 w-12 text-gray-400"
+                    className="mx-auto h-8 w-8 sm:h-12 sm:w-12 text-gray-400"
                     stroke="currentColor"
                     fill="none"
                     viewBox="0 0 48 48"
@@ -429,7 +429,7 @@ export default function Home() {
                       strokeLinejoin="round"
                     />
                   </svg>
-                  <span className="mt-2 block text-sm font-medium text-gray-700">
+                  <span className="mt-2 block text-xs sm:text-sm font-medium text-gray-700">
                     {loading ? 'Processing...' : 'Click to upload face image'}
                   </span>
                 </label>
@@ -439,15 +439,15 @@ export default function Home() {
             {/* Image Preview */}
             {imagePreview && (
               <div className="flex justify-center">
-                <div className="relative">
+                <div className="relative w-full max-w-md">
                   <img
                     src={imagePreview}
                     alt="Uploaded face"
-                    className="max-w-md rounded-lg shadow-lg"
+                    className="w-full h-auto rounded-lg shadow-lg"
                   />
                   {loading && (
                     <div className="absolute inset-0 bg-black bg-opacity-50 rounded-lg flex items-center justify-center">
-                      <div className="text-white text-lg">Analyzing...</div>
+                      <div className="text-white text-sm sm:text-lg">Analyzing...</div>
                     </div>
                   )}
                 </div>
@@ -456,22 +456,22 @@ export default function Home() {
 
             {/* Prediction Result */}
             {prediction !== null && (
-              <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg p-8 text-center text-white">
-                <h2 className="text-2xl font-semibold mb-4">
+              <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg p-4 sm:p-6 md:p-8 text-center text-white">
+                <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-3 sm:mb-4">
                   {mode === 'camera' ? 'Live Prediction' : 'Prediction Result'}
                 </h2>
-                <div className="text-6xl font-bold mb-2">{prediction.toFixed(1)}</div>
-                <p className="text-xl">years remaining</p>
+                <div className="text-4xl sm:text-5xl md:text-6xl font-bold mb-2">{prediction.toFixed(1)}</div>
+                <p className="text-base sm:text-lg md:text-xl">years remaining</p>
                 {mode === 'upload' && (
                   <button
                     onClick={handleReset}
-                    className="mt-6 px-6 py-2 bg-white text-indigo-600 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+                    className="mt-4 sm:mt-6 px-4 sm:px-6 py-2 bg-white text-indigo-600 rounded-lg text-sm sm:text-base font-semibold hover:bg-gray-100 transition-colors"
                   >
                     Try Another Image
                   </button>
                 )}
                 {mode === 'camera' && (
-                  <p className="mt-4 text-sm opacity-90">
+                  <p className="mt-3 sm:mt-4 text-xs sm:text-sm opacity-90">
                     Prediction updates automatically as you move
                   </p>
                 )}
@@ -480,17 +480,17 @@ export default function Home() {
           </div>
 
           {/* Info Section */}
-          <div className="mt-8 pt-8 border-t border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">About</h3>
-            <div className="space-y-4 text-sm text-gray-600">
+          <div className="mt-6 sm:mt-8 pt-6 sm:pt-8 border-t border-gray-200">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3 sm:mb-4">About</h3>
+            <div className="space-y-3 sm:space-y-4 text-xs sm:text-sm text-gray-600">
               <p>
                 This tool uses artificial intelligence to estimate how many years a person might have remaining based on facial features. 
                 You can upload a photo or use your camera for real-time predictions.
               </p>
               
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="font-semibold text-yellow-800 mb-2">⚠️ Important Disclaimer:</p>
-                <ul className="space-y-1 text-yellow-700 text-xs">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
+                <p className="font-semibold text-yellow-800 mb-2 text-xs sm:text-sm">⚠️ Important Disclaimer:</p>
+                <ul className="space-y-1 text-yellow-700 text-xs leading-relaxed">
                   <li>• This prediction is <strong>not medically accurate</strong> and should not be used for health decisions</li>
                   <li>• The model was <strong>not trained on babies or children</strong> - results may not be meaningful for young people</li>
                   <li>• Maximum prediction is around <strong>50 years</strong> - the dataset used for training doesn't include longer lifespans</li>
@@ -499,7 +499,7 @@ export default function Home() {
                 </ul>
               </div>
               
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-gray-500 leading-relaxed">
                 All processing happens in your browser - your photos are never sent to any server. 
                 Your privacy is completely protected.
               </p>

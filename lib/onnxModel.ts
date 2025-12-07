@@ -5,6 +5,66 @@ export interface PredictionResult {
   confidence?: number;
 }
 
+// Initialize WASM backend once globally
+let wasmInitialized = false;
+let wasmInitPromise: Promise<void> | null = null;
+
+async function initializeWasm(): Promise<void> {
+  if (wasmInitialized || typeof window === 'undefined') {
+    return;
+  }
+
+  // If initialization is already in progress, wait for it
+  if (wasmInitPromise) {
+    return wasmInitPromise;
+  }
+
+  wasmInitPromise = (async () => {
+    try {
+      // Configure WASM settings
+      ort.env.wasm.numThreads = 1;
+      ort.env.wasm.simd = false;
+      ort.env.wasm.proxy = false;
+      ort.env.wasm.initTimeout = 10000; // 10 second timeout
+      
+      // Use CDN for WASM files - more reliable than local files
+      ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/';
+      
+      // Try to initialize WASM explicitly using wasmBackend
+      try {
+        // Try using wasmBackend if available
+        const wasmBackend = (ort as any).wasmBackend;
+        if (wasmBackend && typeof wasmBackend.init === 'function') {
+          await wasmBackend.init({
+            wasm: {
+              numThreads: 1,
+              simd: false,
+              proxy: false,
+            }
+          });
+          wasmInitialized = true;
+          console.log('✓ WASM backend initialized');
+        } else {
+          // Mark as initialized - will auto-init on first session create
+          wasmInitialized = true;
+          console.log('✓ WASM configured, will auto-initialize on first session');
+        }
+      } catch (initError) {
+        console.warn('WASM explicit init failed, will auto-initialize:', initError);
+        // Continue - WASM might auto-initialize when creating a session
+        wasmInitialized = true;
+      }
+    } catch (error) {
+      console.error('WASM initialization error:', error);
+      wasmInitPromise = null;
+      // Don't throw - let it try to auto-initialize
+      wasmInitialized = true;
+    }
+  })();
+
+  return wasmInitPromise;
+}
+
 export class LifespanPredictor {
   private session: ort.InferenceSession | null = null;
   private modelPath: string;
@@ -20,11 +80,12 @@ export class LifespanPredictor {
     }
 
     try {
-      // Configure ONNX Runtime for web
-      ort.env.wasm.numThreads = 1; // Use single thread for better compatibility
-      ort.env.wasm.simd = true; // Enable SIMD for faster inference
+      // Initialize WASM backend first
+      await initializeWasm();
 
       console.log('Loading ONNX model from:', this.modelPath);
+      
+      // Create session - WASM should now be initialized
       this.session = await ort.InferenceSession.create(this.modelPath, {
         executionProviders: ['wasm'], // Use WebAssembly backend
         graphOptimizationLevel: 'all', // Enable all optimizations

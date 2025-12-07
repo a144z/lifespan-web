@@ -126,12 +126,25 @@ const nextConfig = {
     }
     return config;
   },
-  // Enable static file serving for ONNX models
+  // Enable static file serving for ONNX models and WASM files
   async headers() {
     return [
       {
         source: '/models/:path*',
         headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        source: '/:path*.wasm',
+        headers: [
+          {
+            key: 'Content-Type',
+            value: 'application/wasm',
+          },
           {
             key: 'Cache-Control',
             value: 'public, max-age=31536000, immutable',
