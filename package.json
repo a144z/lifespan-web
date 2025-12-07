@@ -4,11 +4,12 @@
   "description": "Lightweight web app for remaining lifespan prediction from face images",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "prebuild": "node scripts/copy-wasm.js",
+    "dev": "node scripts/verify-model.js && next dev",
+    "prebuild": "node scripts/copy-wasm.js && node scripts/verify-model.js",
     "build": "next build && node scripts/cleanup-build.js",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "verify-model": "node scripts/verify-model.js"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.0",

@@ -90,6 +90,47 @@ export class LifespanPredictor {
       // Initialize WASM backend first
       await initializeWasm();
 
+      // Verify the model file is accessible before loading
+      if (typeof window !== 'undefined') {
+        const modelUrl = this.modelPath.startsWith('http') 
+          ? this.modelPath 
+          : `${window.location.origin}${this.modelPath}`;
+        
+        console.log('Verifying model file at:', modelUrl);
+        
+        try {
+          const response = await fetch(modelUrl, { method: 'HEAD' });
+          if (!response.ok) {
+            throw new Error(
+              `Model file not found (HTTP ${response.status}). ` +
+              `Expected at: ${modelUrl}. ` +
+              `Please ensure the file exists at: public${this.modelPath}`
+            );
+          }
+          console.log('✓ Model file verified, file size:', response.headers.get('content-length'), 'bytes');
+        } catch (fetchError: any) {
+          // If HEAD fails, try GET to see if it's a CORS or method issue
+          try {
+            const getResponse = await fetch(modelUrl, { method: 'GET', cache: 'no-cache' });
+            if (!getResponse.ok) {
+              throw new Error(
+                `Model file not accessible (HTTP ${getResponse.status}). ` +
+                `Expected at: ${modelUrl}. ` +
+                `Please ensure the file exists at: public${this.modelPath} and restart the dev server.`
+              );
+            }
+            console.log('✓ Model file accessible via GET');
+          } catch (getError) {
+            throw new Error(
+              `Cannot access model file. ` +
+              `Expected at: ${modelUrl}. ` +
+              `Please ensure: 1) File exists at public${this.modelPath}, 2) Dev server is running, 3) Restart the dev server if needed. ` +
+              `Error: ${fetchError?.message || String(fetchError)}`
+            );
+          }
+        }
+      }
+
       console.log('Loading ONNX model from:', this.modelPath);
       
       // Create session - WASM should now be initialized
@@ -100,9 +141,26 @@ export class LifespanPredictor {
 
       this.isLoaded = true;
       console.log('✓ Model loaded successfully');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading model:', error);
-      throw new Error(`Failed to load model: ${error}`);
+      const errorMessage = error?.message || String(error);
+      
+      // Provide more helpful error messages
+      if (errorMessage.includes('404') || errorMessage.includes('Failed to fetch') || errorMessage.includes('not found')) {
+        throw new Error(
+          `Model file not found. ` +
+          `Please ensure: 1) File exists at public${this.modelPath}, ` +
+          `2) Restart the dev server (npm run dev), ` +
+          `3) Check browser console for the exact URL being requested.`
+        );
+      } else if (errorMessage.includes('protobuf') || errorMessage.includes('parsing')) {
+        throw new Error(
+          `Model file is corrupted or invalid. ` +
+          `Please check the ONNX model file at: public${this.modelPath}`
+        );
+      } else {
+        throw new Error(`Failed to load model: ${errorMessage}`);
+      }
     }
   }
 
