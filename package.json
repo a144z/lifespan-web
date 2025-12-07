@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/copy-wasm.js",
     "build": "next build && node scripts/cleanup-build.js",
     "start": "next start",
     "lint": "next lint"

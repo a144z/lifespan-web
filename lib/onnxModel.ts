@@ -27,8 +27,15 @@ async function initializeWasm(): Promise<void> {
       ort.env.wasm.proxy = false;
       ort.env.wasm.initTimeout = 10000; // 10 second timeout
       
-      // Use CDN for WASM files - more reliable than local files
-      ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/';
+      // Use local WASM files first (from public/wasm), fallback to CDN
+      // Local files are more reliable and faster
+      if (typeof window !== 'undefined' && window.location) {
+        const basePath = window.location.origin;
+        ort.env.wasm.wasmPaths = `${basePath}/wasm/`;
+      } else {
+        // Fallback to CDN if window is not available
+        ort.env.wasm.wasmPaths = 'https://unpkg.com/onnxruntime-web@1.14.0/dist/';
+      }
       
       // Try to initialize WASM explicitly using wasmBackend
       try {
