@@ -21,6 +21,7 @@ export default function Home() {
   const [modelLoaded, setModelLoaded] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [fps, setFps] = useState(0);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user'); // 'user' = front, 'environment' = back
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -65,6 +66,47 @@ export default function Home() {
     };
   }, [mode]);
 
+  // Ensure canvas dimensions match video dimensions, especially important on mobile
+  // MediaPipe coordinates are relative to video.videoWidth/video.videoHeight
+  // Canvas must match these exact dimensions for accurate coordinate mapping
+  useEffect(() => {
+    if (mode === 'camera' && videoRef.current && canvasRef.current) {
+      const updateCanvasSize = () => {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (video && canvas && video.videoWidth > 0 && video.videoHeight > 0) {
+          // Match canvas internal dimensions to video's ACTUAL dimensions
+          // This ensures coordinate mapping is accurate regardless of CSS scaling
+          // MediaPipe returns coordinates in video.videoWidth/video.videoHeight space
+          if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+          }
+        }
+      };
+
+      const video = videoRef.current;
+      video.addEventListener('loadedmetadata', updateCanvasSize);
+      video.addEventListener('resize', updateCanvasSize);
+      video.addEventListener('loadeddata', updateCanvasSize);
+      
+      // Also check on video ready
+      if (video.readyState >= video.HAVE_METADATA) {
+        updateCanvasSize();
+      }
+
+      // Periodic check for mobile devices where dimensions might change
+      const intervalId = setInterval(updateCanvasSize, 500);
+
+      return () => {
+        video.removeEventListener('loadedmetadata', updateCanvasSize);
+        video.removeEventListener('resize', updateCanvasSize);
+        video.removeEventListener('loadeddata', updateCanvasSize);
+        clearInterval(intervalId);
+      };
+    }
+  }, [mode, cameraActive]);
+
   const stopCamera = useCallback(() => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -107,7 +149,16 @@ export default function Home() {
     const now = Date.now();
     if (now - lastFrameTimeRef.current < 100) {
       // Still draw the last detected faces even if we skip processing
-      if (canvas && currentFacesRef.current.length > 0) {
+      if (canvas && video && currentFacesRef.current.length > 0) {
+        // Ensure canvas size matches video's ACTUAL dimensions (not CSS display size)
+        // MediaPipe coordinates are relative to video.videoWidth/video.videoHeight
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+          }
+        }
+        
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -115,7 +166,7 @@ export default function Home() {
           for (const faceBox of currentFacesRef.current) {
             const faceKey = getFaceKey(faceBox);
             const prediction = facePredictionsRef.current.get(faceKey);
-            drawFaceBox(ctx, faceBox, prediction);
+            drawFaceBox(ctx, faceBox, prediction, facingMode === 'user');
           }
         }
       } else if (canvas && currentFacesRef.current.length === 0) {
@@ -138,8 +189,18 @@ export default function Home() {
         
         // Draw bounding boxes on canvas
         if (canvas) {
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
+          // Ensure canvas internal dimensions match video's ACTUAL dimensions
+          // This is critical for accurate coordinate mapping, especially on mobile
+          // MediaPipe returns coordinates relative to video.videoWidth/video.videoHeight
+          // NOT relative to the CSS display size
+          if (video.videoWidth > 0 && video.videoHeight > 0) {
+            // Only update canvas size if it changed to avoid unnecessary redraws
+            if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+              canvas.width = video.videoWidth;
+              canvas.height = video.videoHeight;
+            }
+          }
+          
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -153,7 +214,7 @@ export default function Home() {
               const existingPrediction = facePredictionsRef.current.get(faceKey);
               
               // Draw box with existing prediction (if available)
-              drawFaceBox(ctx, faceBox, existingPrediction);
+              drawFaceBox(ctx, faceBox, existingPrediction, facingMode === 'user');
               
               // Predict for this face (only if we don't have a prediction yet, or update periodically)
               // Update prediction every 1 second for each face to avoid too many predictions
@@ -177,7 +238,7 @@ export default function Home() {
                       for (const f of currentFacesRef.current) {
                         const fKey = getFaceKey(f);
                         const fPred = facePredictionsRef.current.get(fKey);
-                        drawFaceBox(ctx, f, fPred);
+                        drawFaceBox(ctx, f, fPred, facingMode === 'user');
                       }
                     }
                   } catch (predErr) {
@@ -218,24 +279,35 @@ export default function Home() {
     }
   }, [getFaceKey]);
 
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(async (facing: 'user' | 'environment' = facingMode) => {
     try {
       setError(null);
       
-      // Request camera access
+      // Stop existing camera if any
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      
+      // Request camera access with specified facing mode
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 640 },
           height: { ideal: 480 },
-          facingMode: 'user' // Front camera
+          facingMode: facing // 'user' = front, 'environment' = back
         }
       });
       
       streamRef.current = stream;
+      setFacingMode(facing);
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         setCameraActive(true);
+        
+        // Clear previous predictions when switching cameras
+        facePredictionsRef.current.clear();
+        currentFacesRef.current = [];
         
         // Wait for video to be ready, then start processing
         videoRef.current.onloadedmetadata = async () => {
@@ -254,7 +326,19 @@ export default function Home() {
       setError(`Camera access denied: ${err}`);
       setCameraActive(false);
     }
-  }, [processVideoFrames]);
+  }, [processVideoFrames, facingMode]);
+
+  const switchCamera = useCallback(async () => {
+    if (!cameraActive) return;
+    
+    try {
+      const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
+      await startCamera(newFacingMode);
+    } catch (err) {
+      // If switching fails (e.g., back camera not available), show error but keep current camera
+      setError(`Failed to switch camera: ${err}. The ${facingMode === 'user' ? 'back' : 'front'} camera may not be available on this device.`);
+    }
+  }, [cameraActive, facingMode, startCamera]);
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -403,17 +487,20 @@ export default function Home() {
                     playsInline
                     muted
                     className="w-full h-full object-cover"
-                    style={{ transform: 'scaleX(-1)' }} // Mirror effect
+                    style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }} // Mirror only front camera
                   />
                   <canvas
                     ref={canvasRef}
                     className="absolute top-0 left-0 w-full h-full pointer-events-none"
-                    style={{ transform: 'scaleX(-1)' }} // Mirror to match video
+                    style={{ 
+                      transform: facingMode === 'user' ? 'scaleX(-1)' : 'none',
+                      objectFit: 'cover' // Ensure canvas scales properly
+                    }} // Mirror to match video (only for front camera)
                   />
                   {!cameraActive && (
                     <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-75">
                       <button
-                        onClick={startCamera}
+                        onClick={() => startCamera()}
                         disabled={!modelLoaded}
                         className="px-4 sm:px-8 py-3 sm:py-4 bg-indigo-600 text-white rounded-lg text-sm sm:text-base font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
@@ -422,14 +509,29 @@ export default function Home() {
                     </div>
                   )}
                   {cameraActive && (
-                    <div className="absolute top-2 sm:top-4 right-2 sm:right-4">
-                      <button
-                        onClick={stopCamera}
-                        className="px-3 sm:px-4 py-1.5 sm:py-2 bg-red-600 text-white rounded-lg text-xs sm:text-sm font-semibold hover:bg-red-700 transition-colors"
-                      >
-                        Stop
-                      </button>
-                    </div>
+                    <>
+                      <div className="absolute top-2 sm:top-4 right-2 sm:right-4 flex gap-2">
+                        {/* Switch Camera Button - Only show on mobile or when back camera is available */}
+                        <button
+                          onClick={switchCamera}
+                          className="px-3 sm:px-4 py-1.5 sm:py-2 bg-indigo-600 text-white rounded-lg text-xs sm:text-sm font-semibold hover:bg-indigo-700 transition-colors flex items-center gap-1"
+                          title={facingMode === 'user' ? 'Switch to back camera' : 'Switch to front camera'}
+                        >
+                          <span className="text-base sm:text-lg">
+                            {facingMode === 'user' ? '📷' : '📱'}
+                          </span>
+                          <span className="hidden sm:inline">
+                            {facingMode === 'user' ? 'Back' : 'Front'}
+                          </span>
+                        </button>
+                        <button
+                          onClick={stopCamera}
+                          className="px-3 sm:px-4 py-1.5 sm:py-2 bg-red-600 text-white rounded-lg text-xs sm:text-sm font-semibold hover:bg-red-700 transition-colors"
+                        >
+                          Stop
+                        </button>
+                      </div>
+                    </>
                   )}
                   {fps > 0 && (
                     <div className="absolute top-2 sm:top-4 left-2 sm:left-4 bg-black bg-opacity-50 text-white px-2 sm:px-3 py-1 rounded text-xs sm:text-sm">

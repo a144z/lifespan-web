@@ -73,12 +73,13 @@ export async function detectFaces(
 
 /**
  * Draw face bounding box on canvas with optional prediction
- * Note: Canvas is mirrored via CSS, so text needs to be reverse-mirrored
+ * @param isMirrored - Whether the canvas is mirrored via CSS (true for front camera)
  */
 export function drawFaceBox(
   ctx: CanvasRenderingContext2D,
   box: FaceBox,
-  prediction?: number | null
+  prediction?: number | null,
+  isMirrored: boolean = true
 ) {
   const canvasWidth = ctx.canvas.width;
   
@@ -95,43 +96,65 @@ export function drawFaceBox(
     const textX = box.x + box.width - padding;
     const textY = box.y + padding + 16; // Top right, accounting for font size
     
-    // Draw background for text readability
-    ctx.save();
-    ctx.scale(-1, 1);
-    ctx.translate(-canvasWidth, 0);
-    
-    // Calculate mirrored position
-    const mirroredX = canvasWidth - textX;
-    
     // Measure text for background
     ctx.font = 'bold 14px sans-serif';
     const metrics = ctx.measureText(text);
     const textWidth = metrics.width;
     const textHeight = 16;
     
-    // Draw semi-transparent background
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(
-      mirroredX - textWidth - padding,
-      textY - textHeight - padding / 2,
-      textWidth + padding * 2,
-      textHeight + padding
-    );
-    
-    // Draw text
-    ctx.fillStyle = '#00ff00';
-    ctx.fillText(text, mirroredX - textWidth, textY);
-    ctx.restore();
+    if (isMirrored) {
+      // Draw background for text readability (mirrored)
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.translate(-canvasWidth, 0);
+      
+      // Calculate mirrored position
+      const mirroredX = canvasWidth - textX;
+      
+      // Draw semi-transparent background
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(
+        mirroredX - textWidth - padding,
+        textY - textHeight - padding / 2,
+        textWidth + padding * 2,
+        textHeight + padding
+      );
+      
+      // Draw text
+      ctx.fillStyle = '#00ff00';
+      ctx.fillText(text, mirroredX - textWidth, textY);
+      ctx.restore();
+    } else {
+      // For back camera (not mirrored), draw directly
+      // Draw semi-transparent background
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(
+        textX - textWidth - padding,
+        textY - textHeight - padding / 2,
+        textWidth + padding * 2,
+        textHeight + padding
+      );
+      
+      // Draw text
+      ctx.fillStyle = '#00ff00';
+      ctx.fillText(text, textX - textWidth, textY);
+    }
   } else {
     // Show "Face Detected" if no prediction yet
-    ctx.save();
-    ctx.scale(-1, 1);
-    ctx.translate(-canvasWidth, 0);
-    ctx.fillStyle = '#00ff00';
-    ctx.font = '14px sans-serif';
-    const textX = canvasWidth - box.x;
-    ctx.fillText('Face Detected', textX, box.y - 10);
-    ctx.restore();
+    if (isMirrored) {
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.translate(-canvasWidth, 0);
+      ctx.fillStyle = '#00ff00';
+      ctx.font = '14px sans-serif';
+      const textX = canvasWidth - box.x;
+      ctx.fillText('Face Detected', textX, box.y - 10);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = '#00ff00';
+      ctx.font = '14px sans-serif';
+      ctx.fillText('Face Detected', box.x, box.y - 10);
+    }
   }
 }
 
