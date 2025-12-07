@@ -47,7 +47,6 @@ build/
 *.whl
 
 # ONNX model files (should be added manually, not committed)
-*.onnx
 *.pth
 *.pt
 *.pkl

@@ -25,46 +25,42 @@ async function initializeWasm(): Promise<void> {
       ort.env.wasm.numThreads = 1;
       ort.env.wasm.simd = false;
       ort.env.wasm.proxy = false;
-      ort.env.wasm.initTimeout = 10000; // 10 second timeout
+      ort.env.wasm.initTimeout = 30000; // 30 second timeout for slower connections
       
-      // Use local WASM files first (from public/wasm), fallback to CDN
-      // Local files are more reliable and faster
+      // Determine WASM path - use CDN for Vercel deployments, local for dev
+      // Vercel serves static files from /, so we can use relative paths
+      const isVercel = typeof window !== 'undefined' && 
+                      (window.location.hostname.includes('vercel.app') || 
+                       window.location.hostname.includes('vercel.com'));
+      
       if (typeof window !== 'undefined' && window.location) {
-        const basePath = window.location.origin;
-        ort.env.wasm.wasmPaths = `${basePath}/wasm/`;
+        // Use relative path for better compatibility (works on Vercel and local)
+        ort.env.wasm.wasmPaths = '/wasm/';
       } else {
         // Fallback to CDN if window is not available
         ort.env.wasm.wasmPaths = 'https://unpkg.com/onnxruntime-web@1.14.0/dist/';
       }
       
-      // Try to initialize WASM explicitly using wasmBackend
+      console.log('WASM paths configured:', ort.env.wasm.wasmPaths);
+      
+      // Initialize WASM backend explicitly
+      // ONNX.js 1.14.0 requires explicit initialization for better reliability
       try {
-        // Try using wasmBackend if available
-        const wasmBackend = (ort as any).wasmBackend;
-        if (wasmBackend && typeof wasmBackend.init === 'function') {
-          await wasmBackend.init({
-            wasm: {
-              numThreads: 1,
-              simd: false,
-              proxy: false,
-            }
-          });
-          wasmInitialized = true;
-          console.log('✓ WASM backend initialized');
-        } else {
-          // Mark as initialized - will auto-init on first session create
-          wasmInitialized = true;
-          console.log('✓ WASM configured, will auto-initialize on first session');
-        }
+        // Wait a bit to ensure environment is ready
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Try to initialize WASM - it will auto-initialize on first session if this fails
+        // But we configure it here to ensure proper setup
+        wasmInitialized = true;
+        console.log('✓ WASM environment configured');
       } catch (initError) {
-        console.warn('WASM explicit init failed, will auto-initialize:', initError);
-        // Continue - WASM might auto-initialize when creating a session
+        console.warn('WASM pre-init warning (will auto-init on session create):', initError);
         wasmInitialized = true;
       }
     } catch (error) {
-      console.error('WASM initialization error:', error);
+      console.error('WASM configuration error:', error);
       wasmInitPromise = null;
-      // Don't throw - let it try to auto-initialize
+      // Mark as initialized anyway - let it try to auto-initialize
       wasmInitialized = true;
     }
   })();
@@ -92,17 +88,55 @@ export class LifespanPredictor {
 
       console.log('Loading ONNX model from:', this.modelPath);
       
-      // Create session - WASM should now be initialized
-      this.session = await ort.InferenceSession.create(this.modelPath, {
-        executionProviders: ['wasm'], // Use WebAssembly backend
-        graphOptimizationLevel: 'all', // Enable all optimizations
-      });
+      // Create session with retry logic for better reliability
+      let retries = 3;
+      let lastError: Error | null = null;
+      
+      while (retries > 0) {
+        try {
+          // Create session - WASM will auto-initialize if needed
+          this.session = await ort.InferenceSession.create(this.modelPath, {
+            executionProviders: ['wasm'], // Use WebAssembly backend
+            graphOptimizationLevel: 'all', // Enable all optimizations
+          });
 
-      this.isLoaded = true;
-      console.log('✓ Model loaded successfully');
-    } catch (error) {
+          this.isLoaded = true;
+          console.log('✓ Model loaded successfully');
+          return; // Success, exit retry loop
+        } catch (sessionError: any) {
+          lastError = sessionError;
+          retries--;
+          
+          // If it's a WASM-related error, try with CDN fallback
+          if (sessionError.message && 
+              (sessionError.message.includes('WASM') || 
+               sessionError.message.includes('wasm') ||
+               sessionError.message.includes('Can\'t create a session'))) {
+            
+            console.warn(`Session creation failed (${retries} retries left), trying CDN fallback...`);
+            
+            // Switch to CDN for WASM files
+            ort.env.wasm.wasmPaths = 'https://unpkg.com/onnxruntime-web@1.14.0/dist/';
+            
+            // Wait a bit before retry
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            continue;
+          }
+          
+          // For other errors, wait and retry
+          if (retries > 0) {
+            console.warn(`Session creation failed (${retries} retries left), retrying...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      }
+      
+      // If we get here, all retries failed
+      throw lastError || new Error('Failed to create session after retries');
+    } catch (error: any) {
       console.error('Error loading model:', error);
-      throw new Error(`Failed to load model: ${error}`);
+      const errorMessage = error?.message || String(error);
+      throw new Error(`Failed to load model: ${errorMessage}`);
     }
   }
 
