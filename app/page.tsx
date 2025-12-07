@@ -66,47 +66,6 @@ export default function Home() {
     };
   }, [mode]);
 
-  // Ensure canvas dimensions match video dimensions, especially important on mobile
-  // MediaPipe coordinates are relative to video.videoWidth/video.videoHeight
-  // Canvas must match these exact dimensions for accurate coordinate mapping
-  useEffect(() => {
-    if (mode === 'camera' && videoRef.current && canvasRef.current) {
-      const updateCanvasSize = () => {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        if (video && canvas && video.videoWidth > 0 && video.videoHeight > 0) {
-          // Match canvas internal dimensions to video's ACTUAL dimensions
-          // This ensures coordinate mapping is accurate regardless of CSS scaling
-          // MediaPipe returns coordinates in video.videoWidth/video.videoHeight space
-          if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-          }
-        }
-      };
-
-      const video = videoRef.current;
-      video.addEventListener('loadedmetadata', updateCanvasSize);
-      video.addEventListener('resize', updateCanvasSize);
-      video.addEventListener('loadeddata', updateCanvasSize);
-      
-      // Also check on video ready
-      if (video.readyState >= video.HAVE_METADATA) {
-        updateCanvasSize();
-      }
-
-      // Periodic check for mobile devices where dimensions might change
-      const intervalId = setInterval(updateCanvasSize, 500);
-
-      return () => {
-        video.removeEventListener('loadedmetadata', updateCanvasSize);
-        video.removeEventListener('resize', updateCanvasSize);
-        video.removeEventListener('loadeddata', updateCanvasSize);
-        clearInterval(intervalId);
-      };
-    }
-  }, [mode, cameraActive]);
-
   const stopCamera = useCallback(() => {
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -278,6 +237,96 @@ export default function Home() {
       animationFrameRef.current = requestAnimationFrame(processVideoFrames);
     }
   }, [getFaceKey]);
+
+  // Ensure canvas dimensions match video dimensions and handle responsive resizing
+  // This is critical for maintaining correct aspect ratio on mobile
+  useEffect(() => {
+    if (mode === 'camera' && videoRef.current && canvasRef.current) {
+      const updateCanvasSize = () => {
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (video && canvas && video.videoWidth > 0 && video.videoHeight > 0) {
+          // Match canvas internal dimensions to video's ACTUAL dimensions
+          // This ensures coordinate mapping is accurate regardless of CSS scaling
+          // MediaPipe returns coordinates in video.videoWidth/video.videoHeight space
+          if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+          }
+        }
+      };
+
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      video.addEventListener('loadedmetadata', updateCanvasSize);
+      video.addEventListener('resize', updateCanvasSize);
+      video.addEventListener('loadeddata', updateCanvasSize);
+      
+      // Also check on video ready
+      if (video.readyState >= video.HAVE_METADATA) {
+        updateCanvasSize();
+      }
+
+      // Use ResizeObserver to watch video element size changes (responsive design)
+      let resizeObserver: ResizeObserver | null = null;
+      if (typeof ResizeObserver !== 'undefined') {
+        resizeObserver = new ResizeObserver(() => {
+          updateCanvasSize();
+          // Force redraw of faces when video container resizes to maintain correct aspect ratio
+          if (canvas && currentFacesRef.current.length > 0) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              for (const faceBox of currentFacesRef.current) {
+                const faceKey = getFaceKey(faceBox);
+                const prediction = facePredictionsRef.current.get(faceKey);
+                drawFaceBox(ctx, faceBox, prediction, facingMode === 'user');
+              }
+            }
+          }
+        });
+        resizeObserver.observe(video);
+      }
+
+      // Handle window resize and orientation change for mobile
+      const handleResize = () => {
+        // Small delay to ensure layout has settled after resize
+        setTimeout(() => {
+          updateCanvasSize();
+          // Force redraw after resize to maintain correct aspect ratio
+          if (canvas && currentFacesRef.current.length > 0) {
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              for (const faceBox of currentFacesRef.current) {
+                const faceKey = getFaceKey(faceBox);
+                const prediction = facePredictionsRef.current.get(faceKey);
+                drawFaceBox(ctx, faceBox, prediction, facingMode === 'user');
+              }
+            }
+          }
+        }, 100);
+      };
+      window.addEventListener('resize', handleResize);
+      window.addEventListener('orientationchange', handleResize);
+
+      // Periodic check for mobile devices where dimensions might change
+      const intervalId = setInterval(updateCanvasSize, 500);
+
+      return () => {
+        video.removeEventListener('loadedmetadata', updateCanvasSize);
+        video.removeEventListener('resize', updateCanvasSize);
+        video.removeEventListener('loadeddata', updateCanvasSize);
+        window.removeEventListener('resize', handleResize);
+        window.removeEventListener('orientationchange', handleResize);
+        if (resizeObserver) {
+          resizeObserver.disconnect();
+        }
+        clearInterval(intervalId);
+      };
+    }
+  }, [mode, cameraActive, facingMode, getFaceKey]);
 
   const startCamera = useCallback(async (facing: 'user' | 'environment' = facingMode) => {
     try {
