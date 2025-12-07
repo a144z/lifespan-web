@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { LifespanPredictor } from '@/lib/onnxModel';
 import { 
   createFaceDetector, 
-  detectFace, 
+  detectFaces, 
   cropFaceFromVideo, 
   drawFaceBox,
   type FaceBox
@@ -14,7 +14,7 @@ type Mode = 'upload' | 'camera';
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>('upload');
-  const [prediction, setPrediction] = useState<number | null>(null);
+  const [prediction, setPrediction] = useState<number | null>(null); // For upload mode
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -32,7 +32,10 @@ export default function Home() {
   const lastFrameTimeRef = useRef<number>(0);
   const frameCountRef = useRef<number>(0);
   const fpsUpdateTimeRef = useRef<number>(Date.now());
-  const currentFaceBoxRef = useRef<FaceBox | null>(null);
+  // Store predictions for each face (keyed by face position hash)
+  // Map structure: faceKey -> prediction value, faceKey_time -> timestamp
+  const facePredictionsRef = useRef<Map<string, number>>(new Map());
+  const currentFacesRef = useRef<FaceBox[]>([]);
 
   // Initialize model and face detector on component mount
   useEffect(() => {
@@ -71,9 +74,10 @@ export default function Home() {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
-    // Clear prediction and canvas when stopping camera
+    // Clear predictions and canvas when stopping camera
     setPrediction(null);
-    currentFaceBoxRef.current = null;
+    facePredictionsRef.current.clear();
+    currentFacesRef.current = [];
     if (canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d');
       if (ctx) {
@@ -81,6 +85,14 @@ export default function Home() {
       }
     }
     setCameraActive(false);
+  }, []);
+
+  // Helper function to generate a stable key for a face box
+  const getFaceKey = useCallback((box: FaceBox): string => {
+    // Round coordinates to create stable keys for similar face positions
+    const roundedX = Math.round(box.x / 10) * 10;
+    const roundedY = Math.round(box.y / 10) * 10;
+    return `${roundedX},${roundedY},${Math.round(box.width)},${Math.round(box.height)}`;
   }, []);
 
   const processVideoFrames = useCallback(async () => {
@@ -94,21 +106,24 @@ export default function Home() {
     // Throttle to ~10 FPS for performance (process every 100ms)
     const now = Date.now();
     if (now - lastFrameTimeRef.current < 100) {
-      // Still draw the last detected face box even if we skip processing
-      if (canvas && currentFaceBoxRef.current) {
+      // Still draw the last detected faces even if we skip processing
+      if (canvas && currentFacesRef.current.length > 0) {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
-          // Draw directly (CSS handles mirroring)
-          drawFaceBox(ctx, currentFaceBoxRef.current);
+          // Draw all faces with their predictions
+          for (const faceBox of currentFacesRef.current) {
+            const faceKey = getFaceKey(faceBox);
+            const prediction = facePredictionsRef.current.get(faceKey);
+            drawFaceBox(ctx, faceBox, prediction);
+          }
         }
-      } else if (canvas && !currentFaceBoxRef.current) {
-        // Clear canvas and prediction if no face was detected
+      } else if (canvas && currentFacesRef.current.length === 0) {
+        // Clear canvas if no faces detected
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
-        setPrediction(null);
       }
       animationFrameRef.current = requestAnimationFrame(processVideoFrames);
       return;
@@ -118,10 +133,10 @@ export default function Home() {
     try {
       // Get video frame
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        // Detect face using MediaPipe
-        const faceBox = await detectFace(faceDetectorRef.current, video);
+        // Detect all faces using MediaPipe
+        const faceBoxes = await detectFaces(faceDetectorRef.current, video);
         
-        // Draw bounding box on canvas
+        // Draw bounding boxes on canvas
         if (canvas) {
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
@@ -129,25 +144,59 @@ export default function Home() {
           if (ctx) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            if (faceBox) {
-              // Draw box directly (Canvas is already mirrored via CSS to match Video)
-              drawFaceBox(ctx, faceBox);
+            // Update current faces
+            currentFacesRef.current = faceBoxes;
+            
+            // Draw all faces
+            for (const faceBox of faceBoxes) {
+              const faceKey = getFaceKey(faceBox);
+              const existingPrediction = facePredictionsRef.current.get(faceKey);
               
-              currentFaceBoxRef.current = faceBox;
+              // Draw box with existing prediction (if available)
+              drawFaceBox(ctx, faceBox, existingPrediction);
               
-              // Crop face and predict
-              try {
-                // This ensures ONLY the face region inside the box is sent to the AI
-                const faceImageData = cropFaceFromVideo(video, faceBox);
-                const result = await predictorRef.current!.predict(faceImageData);
-                setPrediction(result.lifespan);
-              } catch (predErr) {
-                console.error('Prediction error:', predErr);
+              // Predict for this face (only if we don't have a prediction yet, or update periodically)
+              // Update prediction every 1 second for each face to avoid too many predictions
+              const timeKey = `${faceKey}_time`;
+              const lastUpdateTime = facePredictionsRef.current.get(timeKey);
+              const shouldUpdate = !existingPrediction || 
+                (lastUpdateTime !== undefined && (now - lastUpdateTime > 1000));
+              
+              if (shouldUpdate) {
+                // Predict asynchronously without blocking drawing
+                (async () => {
+                  try {
+                    const faceImageData = cropFaceFromVideo(video, faceBox);
+                    const result = await predictorRef.current!.predict(faceImageData);
+                    facePredictionsRef.current.set(faceKey, result.lifespan);
+                    facePredictionsRef.current.set(timeKey, now);
+                    
+                    // Redraw with new prediction
+                    if (ctx && canvas) {
+                      ctx.clearRect(0, 0, canvas.width, canvas.height);
+                      for (const f of currentFacesRef.current) {
+                        const fKey = getFaceKey(f);
+                        const fPred = facePredictionsRef.current.get(fKey);
+                        drawFaceBox(ctx, f, fPred);
+                      }
+                    }
+                  } catch (predErr) {
+                    console.error('Prediction error:', predErr);
+                  }
+                })();
               }
-            } else {
-              currentFaceBoxRef.current = null;
-              setPrediction(null);
             }
+            
+            // Clear predictions for faces that are no longer detected
+            const currentKeys = new Set(faceBoxes.map(box => getFaceKey(box)));
+            const keysToDelete: string[] = [];
+            for (const [key] of facePredictionsRef.current.entries()) {
+              if (!key.endsWith('_time') && !currentKeys.has(key)) {
+                keysToDelete.push(key);
+                keysToDelete.push(`${key}_time`);
+              }
+            }
+            keysToDelete.forEach(key => facePredictionsRef.current.delete(key));
           }
         }
         
@@ -167,7 +216,7 @@ export default function Home() {
     if (streamRef.current) {
       animationFrameRef.current = requestAnimationFrame(processVideoFrames);
     }
-  }, []);
+  }, [getFaceKey]);
 
   const startCamera = useCallback(async () => {
     try {
@@ -454,27 +503,20 @@ export default function Home() {
               </div>
             )}
 
-            {/* Prediction Result */}
-            {prediction !== null && (
+            {/* Prediction Result - Only show for upload mode */}
+            {prediction !== null && mode === 'upload' && (
               <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg p-4 sm:p-6 md:p-8 text-center text-white">
                 <h2 className="text-lg sm:text-xl md:text-2xl font-semibold mb-3 sm:mb-4">
-                  {mode === 'camera' ? 'Live Prediction' : 'Prediction Result'}
+                  Prediction Result
                 </h2>
                 <div className="text-4xl sm:text-5xl md:text-6xl font-bold mb-2">{prediction.toFixed(1)}</div>
                 <p className="text-base sm:text-lg md:text-xl">years remaining</p>
-                {mode === 'upload' && (
-                  <button
-                    onClick={handleReset}
-                    className="mt-4 sm:mt-6 px-4 sm:px-6 py-2 bg-white text-indigo-600 rounded-lg text-sm sm:text-base font-semibold hover:bg-gray-100 transition-colors"
-                  >
-                    Try Another Image
-                  </button>
-                )}
-                {mode === 'camera' && (
-                  <p className="mt-3 sm:mt-4 text-xs sm:text-sm opacity-90">
-                    Prediction updates automatically as you move
-                  </p>
-                )}
+                <button
+                  onClick={handleReset}
+                  className="mt-4 sm:mt-6 px-4 sm:px-6 py-2 bg-white text-indigo-600 rounded-lg text-sm sm:text-base font-semibold hover:bg-gray-100 transition-colors"
+                >
+                  Try Another Image
+                </button>
               </div>
             )}
           </div>

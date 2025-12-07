@@ -38,36 +38,47 @@ export async function detectFace(
   detector: FaceDetector,
   video: HTMLVideoElement
 ): Promise<FaceBox | null> {
+  const faces = await detectFaces(detector, video);
+  return faces.length > 0 ? faces[0] : null;
+}
+
+/**
+ * Detect multiple faces in video frame using MediaPipe
+ * Returns an array of bounding boxes for all detected faces
+ */
+export async function detectFaces(
+  detector: FaceDetector,
+  video: HTMLVideoElement
+): Promise<FaceBox[]> {
   const startTimeMs = performance.now();
   const detections: Detection[] = detector.detectForVideo(video, startTimeMs).detections;
   
-  if (detections.length > 0) {
-    // Get the first face (highest confidence)
-    const detection = detections[0];
+  const faceBoxes: FaceBox[] = [];
+  
+  for (const detection of detections) {
     const box = detection.boundingBox;
-    
     if (box) {
       // Use MediaPipe's bounding box directly for perfect alignment
-      // MediaPipe already provides accurate face boundaries
-      return {
+      faceBoxes.push({
         x: box.originX,
         y: box.originY,
         width: box.width,
         height: box.height
-      };
+      });
     }
   }
   
-  return null;
+  return faceBoxes;
 }
 
 /**
- * Draw face bounding box on canvas
+ * Draw face bounding box on canvas with optional prediction
  * Note: Canvas is mirrored via CSS, so text needs to be reverse-mirrored
  */
 export function drawFaceBox(
   ctx: CanvasRenderingContext2D,
-  box: FaceBox
+  box: FaceBox,
+  prediction?: number | null
 ) {
   const canvasWidth = ctx.canvas.width;
   
@@ -77,16 +88,51 @@ export function drawFaceBox(
   ctx.roundRect(box.x, box.y, box.width, box.height, 10);
   ctx.stroke();
   
-  // Add label - reverse mirror the text so it appears correctly
-  ctx.save();
-  ctx.scale(-1, 1);
-  ctx.translate(-canvasWidth, 0);
-  ctx.fillStyle = '#00ff00';
-  ctx.font = '16px sans-serif';
-  // Calculate mirrored x position for text
-  const textX = canvasWidth - box.x;
-  ctx.fillText('Face Detected', textX, box.y - 10);
-  ctx.restore();
+  // Add prediction label in top right corner of the box
+  if (prediction !== null && prediction !== undefined) {
+    const text = `${prediction.toFixed(1)} years`;
+    const padding = 8;
+    const textX = box.x + box.width - padding;
+    const textY = box.y + padding + 16; // Top right, accounting for font size
+    
+    // Draw background for text readability
+    ctx.save();
+    ctx.scale(-1, 1);
+    ctx.translate(-canvasWidth, 0);
+    
+    // Calculate mirrored position
+    const mirroredX = canvasWidth - textX;
+    
+    // Measure text for background
+    ctx.font = 'bold 14px sans-serif';
+    const metrics = ctx.measureText(text);
+    const textWidth = metrics.width;
+    const textHeight = 16;
+    
+    // Draw semi-transparent background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(
+      mirroredX - textWidth - padding,
+      textY - textHeight - padding / 2,
+      textWidth + padding * 2,
+      textHeight + padding
+    );
+    
+    // Draw text
+    ctx.fillStyle = '#00ff00';
+    ctx.fillText(text, mirroredX - textWidth, textY);
+    ctx.restore();
+  } else {
+    // Show "Face Detected" if no prediction yet
+    ctx.save();
+    ctx.scale(-1, 1);
+    ctx.translate(-canvasWidth, 0);
+    ctx.fillStyle = '#00ff00';
+    ctx.font = '14px sans-serif';
+    const textX = canvasWidth - box.x;
+    ctx.fillText('Face Detected', textX, box.y - 10);
+    ctx.restore();
+  }
 }
 
 /**
